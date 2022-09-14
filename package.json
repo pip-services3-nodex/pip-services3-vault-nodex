@@ -1,0 +1,50 @@
+{
+    "name": "pip-services3-vault-nodex",
+    "version": "1.0.0",
+    "author": "Conceptual Vision Consulting LLC",
+    "description": "HashiCorp Vault based Credential Store and Discovery Service for Pip.Services in Node.js / ES2017",
+    "contributors": [
+        {
+            "name": "Levichev Dmitry",
+            "email": "dlevichev@entinco.com"
+        }
+    ],
+    "main": "./obj/src/index.js",
+    "typings": "./obj/src/index.d.ts",
+    "keywords": [
+        "pip.services",
+        "microservice",
+        "components",
+        "library"
+    ],
+    "noAnalyze": true,
+    "repository": {
+        "type": "git",
+        "url": "ssh://git@github.com:pip-services3-nodex/pip-services3-vault-nodex.git"
+    },
+    "license": "MIT",
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "private": false,
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc --watch",
+        "test": "mocha -t 10000 -R spec -u tdd --recursive ./obj/test",
+        "retest": "tsc && mocha -t 10000 -R spec -u tdd --recursive ./obj/test"
+    },
+    "dependencies": {
+        "js-yaml": "^4.0.0",
+        "hashi-vault-js": "^0.4.11",
+        "pip-services3-commons-nodex": "^1.0.3",
+        "pip-services3-components-nodex": "^1.0.0",
+        "pip-services3-expressions-nodex": "^1.0.2"
+    },
+    "devDependencies": {
+        "@types/chai": "^4.0.0",
+        "@types/mocha": "^8.0.0",
+        "@types/node": "*",
+        "chai": "^4.3.4",
+        "mocha": "^8.3.2"
+    }
+}
