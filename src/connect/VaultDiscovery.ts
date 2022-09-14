@@ -350,9 +350,6 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
             try {
                 let data = await this._client.readKVSecret(this._token, key)
                 this._logger.debug(correlationId, 'Resolved connections for ' + key + ': ', data);
-                if (data as ConnectionParams[] != null) {
-                    return data;
-                }
                 let connections: ConnectionParams[] = [];
                 connections.push(data);
                 return connections;
