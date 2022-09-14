@@ -198,6 +198,7 @@ class VaultDiscovery {
                 this._client = null;
                 throw err; // TODO: Decide, does need to throw error?
             }
+            this._logger.debug(correlationId, "Vault status:", status);
             // open connection and get API token
             try {
                 switch (this._auth_type) {
@@ -227,6 +228,7 @@ class VaultDiscovery {
                 this._client = null;
                 throw err;
             }
+            this._logger.info(correlationId, "Vault Discovery Service opened with %s auth mode", this._auth_type);
             return;
         });
     }
@@ -240,6 +242,7 @@ class VaultDiscovery {
             if (this.isOpen()) {
                 this._client = null;
             }
+            this._logger.info(correlationId, "Vault Discovery Service closed");
         });
     }
     /**

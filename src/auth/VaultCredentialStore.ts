@@ -250,6 +250,8 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
             throw err // TODO: Decide, does need to throw error?
         }
 
+        this._logger.debug(correlationId, "Vault status:", status)
+
         // open connection and get API token
         try {
             switch (this._auth_type) {
@@ -278,6 +280,7 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
             this._client = null;
             throw err
         }
+        this._logger.info(correlationId, "Vault Credential Store opened with %s auth mode", this._auth_type);
         return
     }
 
@@ -290,6 +293,7 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
         if (this.isOpen()) {
             this._client = null;
         }
+        this._logger.info(correlationId, "Vault Credential Store closed");
     }
 
     /**
