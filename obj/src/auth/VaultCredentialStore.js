@@ -52,10 +52,6 @@ const pip_services3_components_nodex_1 = require("pip-services3-components-nodex
  *     // Result: user=jdoe; pass=pass123
  */
 class VaultCredentialStore {
-    /**
-     * Creates a new instance of the credential store.
-     *
-     */
     constructor() {
         this._connectionResolver = new pip_services3_components_nodex_1.ConnectionResolver();
         this._credentialResolver = new pip_services3_components_nodex_1.CredentialResolver();
@@ -147,6 +143,28 @@ class VaultCredentialStore {
         return protocol + '://' + host + ':' + port + '/v1';
     }
     /**
+    * Reads connections from configuration parameters.
+    * And save it to Vault.
+    *
+    * @param config   configuration parameters to be read
+    */
+    loadVaultCredentials(config) {
+        return __awaiter(this, void 0, void 0, function* () {
+            let items = new Map();
+            if (config.length() > 0) {
+                let connectionSections = config.getSectionNames();
+                for (let index = 0; index < connectionSections.length; index++) {
+                    let key = connectionSections[index];
+                    let value = config.getSection(key);
+                    items.set(key, new pip_services3_components_nodex_1.CredentialParams(value));
+                }
+            }
+            // Register all credentials in vault
+            for (let key of items.keys())
+                yield this.store(null, key, items.get(key));
+        });
+    }
+    /**
      * Opens the component.
      *
      * @param correlationId 	(optional) transaction id to trace execution through call chain.
@@ -193,7 +211,13 @@ class VaultCredentialStore {
             this._client = new Vault(options);
             const status = yield this._client.healthCheck();
             // resolve status
-            if (!status.sealed) {
+            if (status.isVaultError || status.response) {
+                let err = new pip_services3_commons_nodex_1.ApplicationException("ERROR", correlationId, "OPEN_ERROR", status.vaultHelpMessage);
+                this._logger.error(correlationId, err, status.vaultHelpMessage, status.response);
+                this._client = null;
+                throw err;
+            }
+            else if (status.sealed) {
                 let err = new pip_services3_commons_nodex_1.ApplicationException("ERROR", correlationId, "OPEN_ERROR", "Vault server is sealed!");
                 this._logger.error(correlationId, err, "Vault server is sealed!");
                 this._client = null;
@@ -204,22 +228,28 @@ class VaultCredentialStore {
             try {
                 switch (this._auth_type) {
                     case "approle": {
-                        this._token = yield this._client.loginWithAppRole(username, password).client_token;
+                        this._token = (yield this._client.loginWithAppRole(username, password)).client_token;
+                        break;
                     }
                     case "ldap": {
-                        this._token = yield this._client.loginWithLdap(username, password).client_token;
+                        this._token = (yield this._client.loginWithLdap(username, password)).client_token;
+                        break;
                     }
                     case "userpass": {
-                        this._token = yield this._client.loginWithUserpass(username, password).client_token;
+                        this._token = (yield this._client.loginWithUserpass(username, password)).client_token;
+                        break;
                     }
                     case "k8s": {
-                        this._token = yield this._client.loginWithK8s(username, password).client_token;
+                        this._token = (yield this._client.loginWithK8s(username, password)).client_token;
+                        break;
                     }
                     case "cert": {
-                        this._token = yield this._client.loginWithCert(username, password).client_token;
+                        this._token = (yield this._client.loginWithCert(username, password)).client_token;
+                        break;
                     }
                     default: {
-                        this._token = yield this._client.loginWithUserpass(username, password).client_token;
+                        this._token = (yield this._client.loginWithUserpass(username, password)).client_token;
+                        break;
                     }
                 }
             }
@@ -254,10 +284,37 @@ class VaultCredentialStore {
      * @param credential        a credential parameters to be stored.
      */
     store(correlationId, key, credential) {
+        var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
             if (this.isOpen()) {
                 try {
-                    yield this._client.createKVSecret(this._token, key, credential);
+                    let credentials = [credential.getAsObject()];
+                    let version = 0;
+                    try {
+                        let res = yield this._client.readKVSecret(this._token, key);
+                        version = res.metadata.version;
+                        // Check if connection already exists
+                        for (let conn of res.data.credentials) {
+                            if (credential.getUsername() == ((_a = conn.username) !== null && _a !== void 0 ? _a : conn.user) && credential.getPassword() == ((_b = conn.password) !== null && _b !== void 0 ? _b : conn.pass)) {
+                                this._logger.info(correlationId, 'Credential already exists via key ' + key + ': ' + credential);
+                                return;
+                            }
+                        }
+                    }
+                    catch (ex) {
+                        if (ex.response && ex.response.status == 404) {
+                            // pass
+                        }
+                        else {
+                            throw ex;
+                        }
+                    }
+                    if (version > 0) {
+                        yield this._client.updateKVSecret(this._token, key, { credentials: credentials }, version);
+                    }
+                    else {
+                        yield this._client.createKVSecret(this._token, key, { credentials: credentials });
+                    }
                     this._logger.debug(correlationId, 'Stored key ' + key + ': ' + credential);
                     return;
                 }
@@ -278,9 +335,12 @@ class VaultCredentialStore {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.isOpen()) {
                 try {
-                    let data = yield this._client.readKVSecret(this._token, key);
-                    this._logger.debug(correlationId, 'KVs for ' + key + ': ', data);
-                    return data;
+                    let res = yield this._client.readKVSecret(this._token, key);
+                    let credential;
+                    if (res.data && res.data.credentials && res.data.credentials.length > 0)
+                        credential = new pip_services3_components_nodex_1.CredentialParams(res.data.credentials[0]);
+                    this._logger.debug(correlationId, 'KVs for ' + key + ': ', credential);
+                    return credential;
                 }
                 catch (ex) {
                     this._logger.error(correlationId, ex, "Can't lookup KV from Vault with key: " + key);

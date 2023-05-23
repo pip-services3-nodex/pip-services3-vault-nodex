@@ -16,7 +16,7 @@
 			// Automatically stop program after launch.
 			"stopOnEntry": false,
 			// Command line arguments passed to the program.
-			"args": ["-t","10000","-R","spec","-u","tdd","--recursive","./obj/test"],
+			"args": ["-t","1000000","-R","spec","-u","tdd","--recursive","./obj/test"],
 			// Workspace relative or absolute path to the working directory of the program being debugged. Default is the current workspace.
 			"cwd": "${workspaceRoot}",
 			//

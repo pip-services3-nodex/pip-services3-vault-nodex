@@ -1,6 +1,14 @@
 {
     "name": "pip-services3-vault-nodex",
-    "registry": "pipdevs",
+    "type": "module",
+    "language": "node",
     "version": "1.0.0",
-    "build": "0"
+    "build": 0,
+    "registry": "pipservices",
+    "artifacts": [
+        {
+            "name": "<name>",
+            "type": "npm"
+        }
+    ]
 }

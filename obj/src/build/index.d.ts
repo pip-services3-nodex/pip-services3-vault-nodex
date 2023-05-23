@@ -1,0 +1,1 @@
+export { DefaultVaultFactory } from './DefaultVaultFactory';

@@ -1,8 +1,9 @@
 /** @module connect */
+
 import { ApplicationException, ConfigException, ConfigParams, ConnectionException, IConfigurable, IOpenable, IReferenceable, IReferences } from 'pip-services3-commons-nodex';
 import { IReconfigurable } from 'pip-services3-commons-nodex';
 
-import { CompositeLogger, ConnectionParams, ConnectionResolver, CredentialParams, CredentialResolver } from 'pip-services3-components-nodex';
+import { CompositeLogger, ConnectionParams, ConnectionResolver, CredentialParams, CredentialResolver, MemoryDiscovery } from 'pip-services3-components-nodex';
 import { IDiscovery } from 'pip-services3-components-nodex';
 
 /**
@@ -30,7 +31,6 @@ import { IDiscovery } from 'pip-services3-components-nodex';
  *   - root_path:             root path after the base URL
  *   - timeout:               default timeout in milliseconds (default: 5 sec)
  *   - namespace:             namespace (multi-tenancy) feature available on all Vault Enterprise versions   
- * 
  * @see [[IDiscovery]]
  * @see [[ConnectionParams]]
  * 
@@ -42,7 +42,6 @@ import { IDiscovery } from 'pip-services3-components-nodex';
  *     // Result: host=10.1.1.100;port=8080
  *     
  */
-
 export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceable, IConfigurable, IOpenable {
     private _connectionResolver: ConnectionResolver = new ConnectionResolver();
     private _credentialResolver: CredentialResolver = new CredentialResolver();
@@ -53,7 +52,7 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
     private _proxy_host: string;
 
     // credentials
-    private _auth_type: string = "userpass"
+    private _auth_type: string = "userpass";
     private _file_cert: string;
     private _file_key: string;
     private _file_cacert: string;
@@ -72,12 +71,6 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
     protected _logger: CompositeLogger = new CompositeLogger();
 
     /**
-     * Creates a new instance of discovery service.
-     * 
-     */
-    public constructor() { }
-
-    /**
     * Configures component by passing configuration parameters.
     * 
     * @param config    configuration parameters to be set.
@@ -85,11 +78,39 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
     public configure(config: ConfigParams): void {
         this._connectionResolver.configure(config);
         this._credentialResolver.configure(config);
-        this._logger.configure(config);
 
+        this._logger.configure(config);
         this._timeout = config.getAsIntegerWithDefault('options.timeout', this._timeout);
-        this._root_path = config.getAsStringWithDefault('options.root_path', this._root_path);
         this._namespace = config.getAsStringWithDefault('options.namespace', this._namespace);
+    }
+
+    /**
+    * Reads connections from configuration parameters.
+    * And save it to Vault.
+    * 
+    * @param config   configuration parameters to be read
+    */
+    public async loadVaultCredentials(config: ConfigParams): Promise<void> {
+        let items: Map<string, ConnectionParams[]> = new Map();
+
+        if (config.length() > 0) {
+            let connectionSections: string[] = config.getSectionNames();
+            for (let index = 0; index < connectionSections.length; index++) {
+                let key = connectionSections[index]
+                let value: ConfigParams = config.getSection(key);
+
+                let connectionsList = items.get(key) ?? [];
+                connectionsList.push(new ConnectionParams(value));
+                items.set(key, connectionsList);
+            }
+        }
+
+        // Register all connections in vault
+        for (let key of items.keys()) {
+            for (let conn of items.get(key)) {
+                await this.register(null, key, conn);
+            }
+        }
     }
 
     /**
@@ -108,7 +129,7 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
      * @returns true if the component has been opened and false otherwise.
     */
     public isOpen(): boolean {
-        return this._client;
+        return this._client != null;
     }
 
     /**
@@ -143,7 +164,6 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
         this._proxy_enable = connection.getAsBooleanWithDefault("proxy_enable", false);
         this._proxy_port = connection.getAsNullableInteger("proxy_port");
         this._proxy_host = connection.getAsNullableString("proxy_host");
-
     }
 
     /**
@@ -241,8 +261,14 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
         const Vault = require('hashi-vault-js');
         this._client = new Vault(options);
         const status = await this._client.healthCheck();
+
         // resolve status
-        if (!status.sealed) {
+        if (status.isVaultError || status.response) {
+            let err = new ApplicationException("ERROR", correlationId, "OPEN_ERROR", status.vaultHelpMessage);
+            this._logger.error(correlationId, err, status.vaultHelpMessage, status.response)
+            this._client = null;
+            throw err;
+        } else if (status.sealed) {
             let err = new ApplicationException("ERROR", correlationId, "OPEN_ERROR", "Vault server is sealed!")
             this._logger.error(correlationId, err, "Vault server is sealed!")
             this._client = null;
@@ -255,22 +281,28 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
         try {
             switch (this._auth_type) {
                 case "approle": {
-                    this._token = await this._client.loginWithAppRole(username, password).client_token;
+                    this._token = (await this._client.loginWithAppRole(username, password)).client_token;
+                    break;
                 }
                 case "ldap": {
-                    this._token = await this._client.loginWithLdap(username, password).client_token;
+                    this._token = (await this._client.loginWithLdap(username, password)).client_token;
+                    break;
                 }
                 case "userpass": {
-                    this._token = await this._client.loginWithUserpass(username, password).client_token;
+                    this._token = (await this._client.loginWithUserpass(username, password)).client_token;
+                    break;
                 }
                 case "k8s": {
-                    this._token = await this._client.loginWithK8s(username, password).client_token
+                    this._token = (await this._client.loginWithK8s(username, password)).client_token;
+                    break;
                 }
                 case "cert": {
-                    this._token = await this._client.loginWithCert(username, password).client_token;
+                    this._token = (await this._client.loginWithCert(username, password)).client_token;
+                    break;
                 }
                 default: {
-                    this._token = await this._client.loginWithUserpass(username, password).client_token;
+                    this._token = (await this._client.loginWithUserpass(username, password)).client_token;
+                    break;
                 }
             }
         } catch (ex) {
@@ -306,7 +338,37 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
     public async register(correlationId: string, key: string, connection: ConnectionParams): Promise<ConnectionParams> {
         if (this.isOpen()) {
             try {
-                await this._client.createKVSecret(this._token, key, connection)
+                let connections = [];
+                let version = 0;
+                try {
+                    let res = await this._client.readKVSecret(this._token, key);
+                    version = res.metadata.version;
+                    // Check if connection already exists
+                    for (let conn of res.data.connections) {
+                        if (connection.getHost() == conn.host && connection.getPort() == (conn.port ?? 0)) {
+                            this._logger.info(correlationId, 'Connection already exists via key ' + key + ': ' + connection);
+                            return connection;
+                        }
+                    }
+
+                    for (let conn of res.data.connections)
+                        connections.push(new ConnectionParams(conn).getAsObject());
+                } catch (ex) {
+                    if (ex.response && ex.response.status == 404) {
+                        // pass
+                    } else {
+                        throw ex;
+                    }
+                }
+
+                connections.push(connection.getAsObject());
+                
+                if (connections.length > 1 && version > 0) {
+                    await this._client.updateKVSecret(this._token, key, { connections: connections }, version);
+                } else {
+                    await this._client.createKVSecret(this._token, key, { connections: connections });
+                }
+                
                 this._logger.debug(correlationId, 'Register via key ' + key + ': ' + connection);
                 return connection;
             } catch (ex) {
@@ -324,11 +386,13 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
      * @returns                 a found connection parameters or <code>null</code> otherwise
      */
     public async resolveOne(correlationId: string, key: string): Promise<ConnectionParams> {
-
         if (this.isOpen()) {
             try {
-                let connection = await this._client.readKVSecret(this._token, key)
-                this._logger.debug(correlationId, 'Resolved connection for ' + key + ': ', connection);
+                let res = await this._client.readKVSecret(this._token, key);
+                this._logger.debug(correlationId, 'Resolved connection for ' + key + ': ', res);
+                let connection: ConnectionParams;
+                if (res.data && res.data.connections && res.data.connections.length > 0)
+                    connection = new ConnectionParams(res.data.connections[0]);
                 return connection;
             } catch (ex) {
                 this._logger.error(correlationId, ex, "Can't resolve KV from Vault with key: " + key);
@@ -345,13 +409,16 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
      * @returns                 all found connection parameters
      */
     public async resolveAll(correlationId: string, key: string): Promise<ConnectionParams[]> {
-        
         if (this.isOpen()) {
             try {
-                let data = await this._client.readKVSecret(this._token, key)
-                this._logger.debug(correlationId, 'Resolved connections for ' + key + ': ', data);
+                let res = await this._client.readKVSecret(this._token, key)
+                this._logger.debug(correlationId, 'Resolved connections for ' + key + ': ', res);
+
                 let connections: ConnectionParams[] = [];
-                connections.push(data);
+
+                for (let conn of res.data.connections)
+                    connections.push(new ConnectionParams(conn));
+                
                 return connections;
             } catch (ex) {
                 this._logger.error(correlationId, ex, "Can't resolve KV from Vault with key: " + key);
