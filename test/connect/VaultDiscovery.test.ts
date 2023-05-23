@@ -32,7 +32,7 @@ suite('VaultDiscovery', ()=> {
         discovery = new VaultDiscovery();
         discovery.configure(vaultConfig);
         await discovery.open(null);
-        await discovery.loadVaultCredentials(connections);
+        await discovery.loadVaultCredentials(connections, true);
     });
 
     test('Resolve connections', async () => {

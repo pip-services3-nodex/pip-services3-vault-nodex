@@ -24,7 +24,7 @@ suite('VaultCredentialStore', () => {
         credentialStore = new VaultCredentialStore_1.VaultCredentialStore();
         credentialStore.configure(vaultConfig);
         yield credentialStore.open(null);
-        yield credentialStore.loadVaultCredentials(credentials);
+        yield credentialStore.loadVaultCredentials(credentials, true);
     }));
     test('Lookup and store test', () => __awaiter(void 0, void 0, void 0, function* () {
         let cred1 = yield credentialStore.lookup('123', 'credKey1');

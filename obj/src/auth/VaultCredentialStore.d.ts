@@ -91,8 +91,9 @@ export declare class VaultCredentialStore implements ICredentialStore, IReconfig
     * And save it to Vault.
     *
     * @param config   configuration parameters to be read
+    * @param rewrite   rewrite flag if key exists
     */
-    loadVaultCredentials(config: ConfigParams): Promise<void>;
+    loadVaultCredentials(config: ConfigParams, rewrite?: boolean): Promise<void>;
     /**
      * Opens the component.
      *

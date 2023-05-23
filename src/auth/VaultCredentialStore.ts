@@ -185,8 +185,9 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
     * And save it to Vault.
     * 
     * @param config   configuration parameters to be read
+    * @param rewrite   rewrite flag if key exists
     */
-    public async loadVaultCredentials(config: ConfigParams): Promise<void> {
+    public async loadVaultCredentials(config: ConfigParams, rewrite?: boolean): Promise<void> {
         let items: Map<string, CredentialParams> = new Map();
 
         if (config.length() > 0) {
@@ -200,8 +201,21 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
         }
 
         // Register all credentials in vault
-        for (let key of items.keys())
-            await this.store(null, key, items.get(key));
+        for (let key of items.keys()) {
+            if (!rewrite) {
+                try {
+                    await this._client.readKVSecret(this._token, key);
+                } catch (ex) {
+                    if (ex.response && ex.response.status == 404) {
+                        await this.store(null, key, items.get(key));
+                    } else {
+                        throw ex;
+                    }
+                }
+            } else {
+                await this.store(null, key, items.get(key));
+            }
+        }
     }
 
     /**

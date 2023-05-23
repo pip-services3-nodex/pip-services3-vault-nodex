@@ -82,8 +82,9 @@ class VaultDiscovery {
     * And save it to Vault.
     *
     * @param config   configuration parameters to be read
+    * @param rewrite   rewrite flag if key exists
     */
-    loadVaultCredentials(config) {
+    loadVaultCredentials(config, rewrite) {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
             let items = new Map();
@@ -100,7 +101,22 @@ class VaultDiscovery {
             // Register all connections in vault
             for (let key of items.keys()) {
                 for (let conn of items.get(key)) {
-                    yield this.register(null, key, conn);
+                    if (!rewrite) {
+                        try {
+                            yield this._client.readKVSecret(this._token, key);
+                        }
+                        catch (ex) {
+                            if (ex.response && ex.response.status == 404) {
+                                yield this.register(null, key, conn);
+                            }
+                            else {
+                                throw ex;
+                            }
+                        }
+                    }
+                    else {
+                        yield this.register(null, key, conn);
+                    }
                 }
             }
         });
@@ -304,8 +320,10 @@ class VaultDiscovery {
                                 return connection;
                             }
                         }
-                        for (let conn of res.data.connections)
-                            connections.push(new pip_services3_components_nodex_1.ConnectionParams(conn).getAsObject());
+                        if (res.data && res.data.connections) {
+                            for (let conn of res.data.connections)
+                                connections.push(new pip_services3_components_nodex_1.ConnectionParams(conn).getAsObject());
+                        }
                     }
                     catch (ex) {
                         if (ex.response && ex.response.status == 404) {

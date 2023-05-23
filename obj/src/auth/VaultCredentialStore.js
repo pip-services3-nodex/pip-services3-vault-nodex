@@ -147,8 +147,9 @@ class VaultCredentialStore {
     * And save it to Vault.
     *
     * @param config   configuration parameters to be read
+    * @param rewrite   rewrite flag if key exists
     */
-    loadVaultCredentials(config) {
+    loadVaultCredentials(config, rewrite) {
         return __awaiter(this, void 0, void 0, function* () {
             let items = new Map();
             if (config.length() > 0) {
@@ -160,8 +161,24 @@ class VaultCredentialStore {
                 }
             }
             // Register all credentials in vault
-            for (let key of items.keys())
-                yield this.store(null, key, items.get(key));
+            for (let key of items.keys()) {
+                if (!rewrite) {
+                    try {
+                        yield this._client.readKVSecret(this._token, key);
+                    }
+                    catch (ex) {
+                        if (ex.response && ex.response.status == 404) {
+                            yield this.store(null, key, items.get(key));
+                        }
+                        else {
+                            throw ex;
+                        }
+                    }
+                }
+                else {
+                    yield this.store(null, key, items.get(key));
+                }
+            }
         });
     }
     /**

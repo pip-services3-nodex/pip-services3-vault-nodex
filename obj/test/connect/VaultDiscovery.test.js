@@ -24,7 +24,7 @@ suite('VaultDiscovery', () => {
         discovery = new VaultDiscovery_1.VaultDiscovery();
         discovery.configure(vaultConfig);
         yield discovery.open(null);
-        yield discovery.loadVaultCredentials(connections);
+        yield discovery.loadVaultCredentials(connections, true);
     }));
     test('Resolve connections', () => __awaiter(void 0, void 0, void 0, function* () {
         // Resolve one

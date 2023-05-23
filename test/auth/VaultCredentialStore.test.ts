@@ -32,7 +32,7 @@ suite('VaultCredentialStore', ()=> {
         credentialStore = new VaultCredentialStore();
         credentialStore.configure(vaultConfig);
         await credentialStore.open(null);
-        await credentialStore.loadVaultCredentials(credentials);
+        await credentialStore.loadVaultCredentials(credentials, true);
     });
 
     test('Lookup and store test', async () => {

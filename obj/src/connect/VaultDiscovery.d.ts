@@ -69,8 +69,9 @@ export declare class VaultDiscovery implements IDiscovery, IReconfigurable, IRef
     * And save it to Vault.
     *
     * @param config   configuration parameters to be read
+    * @param rewrite   rewrite flag if key exists
     */
-    loadVaultCredentials(config: ConfigParams): Promise<void>;
+    loadVaultCredentials(config: ConfigParams, rewrite?: boolean): Promise<void>;
     /**
     * Sets references to dependent components.
     *

@@ -89,8 +89,9 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
     * And save it to Vault.
     * 
     * @param config   configuration parameters to be read
+    * @param rewrite   rewrite flag if key exists
     */
-    public async loadVaultCredentials(config: ConfigParams): Promise<void> {
+    public async loadVaultCredentials(config: ConfigParams, rewrite?: boolean): Promise<void> {
         let items: Map<string, ConnectionParams[]> = new Map();
 
         if (config.length() > 0) {
@@ -108,7 +109,19 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
         // Register all connections in vault
         for (let key of items.keys()) {
             for (let conn of items.get(key)) {
-                await this.register(null, key, conn);
+                if (!rewrite) {
+                    try {
+                        await this._client.readKVSecret(this._token, key);
+                    } catch (ex) {
+                        if (ex.response && ex.response.status == 404) {
+                            await this.register(null, key, conn);
+                        } else {
+                            throw ex;
+                        }
+                    }
+                } else {
+                    await this.register(null, key, conn);
+                }
             }
         }
     }
@@ -351,8 +364,10 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
                         }
                     }
 
-                    for (let conn of res.data.connections)
-                        connections.push(new ConnectionParams(conn).getAsObject());
+                    if (res.data && res.data.connections) {
+                        for (let conn of res.data.connections)
+                            connections.push(new ConnectionParams(conn).getAsObject());
+                    }
                 } catch (ex) {
                     if (ex.response && ex.response.status == 404) {
                         // pass
