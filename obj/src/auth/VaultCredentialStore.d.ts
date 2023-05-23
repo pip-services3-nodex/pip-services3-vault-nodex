@@ -61,11 +61,6 @@ export declare class VaultCredentialStore implements ICredentialStore, IReconfig
      */
     protected _logger: CompositeLogger;
     /**
-     * Creates a new instance of the credential store.
-     *
-     */
-    constructor();
-    /**
      * Configures component by passing configuration parameters.
      *
      * @param config    configuration parameters to be set.
@@ -91,6 +86,13 @@ export declare class VaultCredentialStore implements ICredentialStore, IReconfig
      *  Helper method for compose uri
      */
     private composeUri;
+    /**
+    * Reads connections from configuration parameters.
+    * And save it to Vault.
+    *
+    * @param config   configuration parameters to be read
+    */
+    loadVaultCredentials(config: ConfigParams): Promise<void>;
     /**
      * Opens the component.
      *

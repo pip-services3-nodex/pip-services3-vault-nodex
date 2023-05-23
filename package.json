@@ -34,17 +34,17 @@
         "retest": "tsc && mocha -t 10000 -R spec -u tdd --recursive ./obj/test"
     },
     "dependencies": {
-        "js-yaml": "^4.0.0",
-        "hashi-vault-js": "^0.4.11",
-        "pip-services3-commons-nodex": "^1.0.3",
-        "pip-services3-components-nodex": "^1.0.0",
-        "pip-services3-expressions-nodex": "^1.0.2"
+        "js-yaml": "^4.1.0",
+        "hashi-vault-js": "^0.4.13",
+        "pip-services3-commons-nodex": "^1.0.4",
+        "pip-services3-components-nodex": "^1.4.3",
+        "pip-services3-expressions-nodex": "^1.0.4"
     },
     "devDependencies": {
-        "@types/chai": "^4.0.0",
-        "@types/mocha": "^8.0.0",
+        "@types/chai": "^4.3.5",
+        "@types/mocha": "^10.0.1",
         "@types/node": "*",
-        "chai": "^4.3.4",
-        "mocha": "^8.3.2"
+        "chai": "^4.3.7",
+        "mocha": "^10.2.0"
     }
 }

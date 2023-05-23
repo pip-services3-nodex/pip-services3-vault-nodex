@@ -2,9 +2,8 @@
 import { ApplicationException, ConfigException, ConfigParams, ConnectionException, IConfigurable, IOpenable, IReferenceable, IReferences } from 'pip-services3-commons-nodex';
 import { IReconfigurable } from 'pip-services3-commons-nodex';
 
-import { CompositeLogger, ConnectionParams, ConnectionResolver, CredentialParams, CredentialResolver } from 'pip-services3-components-nodex';
+import { CompositeLogger, ConnectionParams, ConnectionResolver, CredentialParams, CredentialResolver, MemoryCredentialStore } from 'pip-services3-components-nodex';
 import { ICredentialStore } from 'pip-services3-components-nodex';
-import { config } from 'process';
 
 /**
  * Credential store that keeps credentials in memory.
@@ -71,12 +70,6 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
      * The logger.
      */
     protected _logger: CompositeLogger = new CompositeLogger();
-
-    /**
-     * Creates a new instance of the credential store.
-     * 
-     */
-    public constructor() { }
 
     /**
      * Configures component by passing configuration parameters.
@@ -188,6 +181,30 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
     }
 
     /**
+    * Reads connections from configuration parameters.
+    * And save it to Vault.
+    * 
+    * @param config   configuration parameters to be read
+    */
+    public async loadVaultCredentials(config: ConfigParams): Promise<void> {
+        let items: Map<string, CredentialParams> = new Map();
+
+        if (config.length() > 0) {
+            let connectionSections: string[] = config.getSectionNames();
+            for (let index = 0; index < connectionSections.length; index++) {
+                let key = connectionSections[index]
+                let value: ConfigParams = config.getSection(key);
+
+                items.set(key, new CredentialParams(value));
+            }
+        }
+
+        // Register all credentials in vault
+        for (let key of items.keys())
+            await this.store(null, key, items.get(key));
+    }
+
+    /**
      * Opens the component.
      * 
      * @param correlationId 	(optional) transaction id to trace execution through call chain.
@@ -242,8 +259,14 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
         const Vault = require('hashi-vault-js');
         this._client = new Vault(options);
         const status = await this._client.healthCheck();
+
         // resolve status
-        if (!status.sealed) {
+        if (status.isVaultError || status.response) {
+            let err = new ApplicationException("ERROR", correlationId, "OPEN_ERROR", status.vaultHelpMessage);
+            this._logger.error(correlationId, err, status.vaultHelpMessage, status.response)
+            this._client = null;
+            throw err;
+        } else if (status.sealed) {
             let err = new ApplicationException("ERROR", correlationId, "OPEN_ERROR", "Vault server is sealed!")
             this._logger.error(correlationId, err, "Vault server is sealed!")
             this._client = null;
@@ -256,22 +279,28 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
         try {
             switch (this._auth_type) {
                 case "approle": {
-                    this._token = await this._client.loginWithAppRole(username, password).client_token;
+                    this._token = (await this._client.loginWithAppRole(username, password)).client_token;
+                    break;
                 }
                 case "ldap": {
-                    this._token = await this._client.loginWithLdap(username, password).client_token;
+                    this._token = (await this._client.loginWithLdap(username, password)).client_token;
+                    break;
                 }
                 case "userpass": {
-                    this._token = await this._client.loginWithUserpass(username, password).client_token;
+                    this._token = (await this._client.loginWithUserpass(username, password)).client_token;
+                    break;
                 }
                 case "k8s": {
-                    this._token = await this._client.loginWithK8s(username, password).client_token
+                    this._token = (await this._client.loginWithK8s(username, password)).client_token;
+                    break;
                 }
                 case "cert": {
-                    this._token = await this._client.loginWithCert(username, password).client_token;
+                    this._token = (await this._client.loginWithCert(username, password)).client_token;
+                    break;
                 }
                 default: {
-                    this._token = await this._client.loginWithUserpass(username, password).client_token;
+                    this._token = (await this._client.loginWithUserpass(username, password)).client_token;
+                    break;
                 }
             }
         } catch (ex) {
@@ -305,10 +334,36 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
      */
     public async store(correlationId: string, key: string, credential: CredentialParams): Promise<void> {
         if (this.isOpen()) {
+            
             try {
-                await this._client.createKVSecret(this._token, key, credential)
+                let credentials = [credential.getAsObject()];
+                let version = 0;
+                try {
+                    let res = await this._client.readKVSecret(this._token, key);
+                    version = res.metadata.version;
+                    // Check if connection already exists
+                    for (let conn of res.data.credentials) {
+                        if (credential.getUsername() == (conn.username ?? conn.user) && credential.getPassword() == (conn.password ?? conn.pass)) {
+                            this._logger.info(correlationId, 'Credential already exists via key ' + key + ': ' + credential);
+                            return;
+                        }
+                    }
+                } catch (ex) {
+                    if (ex.response && ex.response.status == 404) {
+                        // pass
+                    } else {
+                        throw ex;
+                    }
+                }
+
+                if (version > 0) {
+                    await this._client.updateKVSecret(this._token, key, { credentials: credentials }, version);
+                } else {
+                    await this._client.createKVSecret(this._token, key, { credentials: credentials });
+                }
+
                 this._logger.debug(correlationId, 'Stored key ' + key + ': ' + credential);
-                return
+                return;
             } catch (ex) {
                 this._logger.error(correlationId, ex, "Can't store KV to Vault with key: " + key);
             }
@@ -326,9 +381,14 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
     public async lookup(correlationId: string, key: string): Promise<CredentialParams> {
         if (this.isOpen()) {
             try {
-                let data = await this._client.readKVSecret(this._token, key)
-                this._logger.debug(correlationId, 'KVs for ' + key + ': ', data);
-                return data
+                let res = await this._client.readKVSecret(this._token, key);
+                let credential: CredentialParams;
+                if (res.data && res.data.credentials && res.data.credentials.length > 0)
+                    credential = new CredentialParams(res.data.credentials[0]);
+
+                this._logger.debug(correlationId, 'KVs for ' + key + ': ', credential);
+
+                return credential;
             } catch (ex) {
                 this._logger.error(correlationId, ex, "Can't lookup KV from Vault with key: " + key);
             }

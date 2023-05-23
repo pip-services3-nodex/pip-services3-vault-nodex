@@ -1,4 +1,5 @@
 "use strict";
+/** @module connect */
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -10,7 +11,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VaultDiscovery = void 0;
-/** @module connect */
 const pip_services3_commons_nodex_1 = require("pip-services3-commons-nodex");
 const pip_services3_components_nodex_1 = require("pip-services3-components-nodex");
 /**
@@ -38,7 +38,6 @@ const pip_services3_components_nodex_1 = require("pip-services3-components-nodex
  *   - root_path:             root path after the base URL
  *   - timeout:               default timeout in milliseconds (default: 5 sec)
  *   - namespace:             namespace (multi-tenancy) feature available on all Vault Enterprise versions
- *
  * @see [[IDiscovery]]
  * @see [[ConnectionParams]]
  *
@@ -51,10 +50,6 @@ const pip_services3_components_nodex_1 = require("pip-services3-components-nodex
  *
  */
 class VaultDiscovery {
-    /**
-     * Creates a new instance of discovery service.
-     *
-     */
     constructor() {
         this._connectionResolver = new pip_services3_components_nodex_1.ConnectionResolver();
         this._credentialResolver = new pip_services3_components_nodex_1.CredentialResolver();
@@ -80,8 +75,35 @@ class VaultDiscovery {
         this._credentialResolver.configure(config);
         this._logger.configure(config);
         this._timeout = config.getAsIntegerWithDefault('options.timeout', this._timeout);
-        this._root_path = config.getAsStringWithDefault('options.root_path', this._root_path);
         this._namespace = config.getAsStringWithDefault('options.namespace', this._namespace);
+    }
+    /**
+    * Reads connections from configuration parameters.
+    * And save it to Vault.
+    *
+    * @param config   configuration parameters to be read
+    */
+    loadVaultCredentials(config) {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            let items = new Map();
+            if (config.length() > 0) {
+                let connectionSections = config.getSectionNames();
+                for (let index = 0; index < connectionSections.length; index++) {
+                    let key = connectionSections[index];
+                    let value = config.getSection(key);
+                    let connectionsList = (_a = items.get(key)) !== null && _a !== void 0 ? _a : [];
+                    connectionsList.push(new pip_services3_components_nodex_1.ConnectionParams(value));
+                    items.set(key, connectionsList);
+                }
+            }
+            // Register all connections in vault
+            for (let key of items.keys()) {
+                for (let conn of items.get(key)) {
+                    yield this.register(null, key, conn);
+                }
+            }
+        });
     }
     /**
     * Sets references to dependent components.
@@ -99,7 +121,7 @@ class VaultDiscovery {
      * @returns true if the component has been opened and false otherwise.
     */
     isOpen() {
-        return this._client;
+        return this._client != null;
     }
     /**
      *  Helper method for resolve all additonal parameters
@@ -192,7 +214,13 @@ class VaultDiscovery {
             this._client = new Vault(options);
             const status = yield this._client.healthCheck();
             // resolve status
-            if (!status.sealed) {
+            if (status.isVaultError || status.response) {
+                let err = new pip_services3_commons_nodex_1.ApplicationException("ERROR", correlationId, "OPEN_ERROR", status.vaultHelpMessage);
+                this._logger.error(correlationId, err, status.vaultHelpMessage, status.response);
+                this._client = null;
+                throw err;
+            }
+            else if (status.sealed) {
                 let err = new pip_services3_commons_nodex_1.ApplicationException("ERROR", correlationId, "OPEN_ERROR", "Vault server is sealed!");
                 this._logger.error(correlationId, err, "Vault server is sealed!");
                 this._client = null;
@@ -203,22 +231,28 @@ class VaultDiscovery {
             try {
                 switch (this._auth_type) {
                     case "approle": {
-                        this._token = yield this._client.loginWithAppRole(username, password).client_token;
+                        this._token = (yield this._client.loginWithAppRole(username, password)).client_token;
+                        break;
                     }
                     case "ldap": {
-                        this._token = yield this._client.loginWithLdap(username, password).client_token;
+                        this._token = (yield this._client.loginWithLdap(username, password)).client_token;
+                        break;
                     }
                     case "userpass": {
-                        this._token = yield this._client.loginWithUserpass(username, password).client_token;
+                        this._token = (yield this._client.loginWithUserpass(username, password)).client_token;
+                        break;
                     }
                     case "k8s": {
-                        this._token = yield this._client.loginWithK8s(username, password).client_token;
+                        this._token = (yield this._client.loginWithK8s(username, password)).client_token;
+                        break;
                     }
                     case "cert": {
-                        this._token = yield this._client.loginWithCert(username, password).client_token;
+                        this._token = (yield this._client.loginWithCert(username, password)).client_token;
+                        break;
                     }
                     default: {
-                        this._token = yield this._client.loginWithUserpass(username, password).client_token;
+                        this._token = (yield this._client.loginWithUserpass(username, password)).client_token;
+                        break;
                     }
                 }
             }
@@ -254,10 +288,40 @@ class VaultDiscovery {
      * @returns 			    the registered connection parameters.
      */
     register(correlationId, key, connection) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
             if (this.isOpen()) {
                 try {
-                    yield this._client.createKVSecret(this._token, key, connection);
+                    let connections = [];
+                    let version = 0;
+                    try {
+                        let res = yield this._client.readKVSecret(this._token, key);
+                        version = res.metadata.version;
+                        // Check if connection already exists
+                        for (let conn of res.data.connections) {
+                            if (connection.getHost() == conn.host && connection.getPort() == ((_a = conn.port) !== null && _a !== void 0 ? _a : 0)) {
+                                this._logger.info(correlationId, 'Connection already exists via key ' + key + ': ' + connection);
+                                return connection;
+                            }
+                        }
+                        for (let conn of res.data.connections)
+                            connections.push(new pip_services3_components_nodex_1.ConnectionParams(conn).getAsObject());
+                    }
+                    catch (ex) {
+                        if (ex.response && ex.response.status == 404) {
+                            // pass
+                        }
+                        else {
+                            throw ex;
+                        }
+                    }
+                    connections.push(connection.getAsObject());
+                    if (connections.length > 1 && version > 0) {
+                        yield this._client.updateKVSecret(this._token, key, { connections: connections }, version);
+                    }
+                    else {
+                        yield this._client.createKVSecret(this._token, key, { connections: connections });
+                    }
                     this._logger.debug(correlationId, 'Register via key ' + key + ': ' + connection);
                     return connection;
                 }
@@ -278,8 +342,11 @@ class VaultDiscovery {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.isOpen()) {
                 try {
-                    let connection = yield this._client.readKVSecret(this._token, key);
-                    this._logger.debug(correlationId, 'Resolved connection for ' + key + ': ', connection);
+                    let res = yield this._client.readKVSecret(this._token, key);
+                    this._logger.debug(correlationId, 'Resolved connection for ' + key + ': ', res);
+                    let connection;
+                    if (res.data && res.data.connections && res.data.connections.length > 0)
+                        connection = new pip_services3_components_nodex_1.ConnectionParams(res.data.connections[0]);
                     return connection;
                 }
                 catch (ex) {
@@ -299,13 +366,11 @@ class VaultDiscovery {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.isOpen()) {
                 try {
-                    let data = yield this._client.readKVSecret(this._token, key);
-                    this._logger.debug(correlationId, 'Resolved connections for ' + key + ': ', data);
-                    if (data != null) {
-                        return data;
-                    }
+                    let res = yield this._client.readKVSecret(this._token, key);
+                    this._logger.debug(correlationId, 'Resolved connections for ' + key + ': ', res);
                     let connections = [];
-                    connections.push(data);
+                    for (let conn of res.data.connections)
+                        connections.push(new pip_services3_components_nodex_1.ConnectionParams(conn));
                     return connections;
                 }
                 catch (ex) {

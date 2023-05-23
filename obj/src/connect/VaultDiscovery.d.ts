@@ -28,7 +28,6 @@ import { IDiscovery } from 'pip-services3-components-nodex';
  *   - root_path:             root path after the base URL
  *   - timeout:               default timeout in milliseconds (default: 5 sec)
  *   - namespace:             namespace (multi-tenancy) feature available on all Vault Enterprise versions
- *
  * @see [[IDiscovery]]
  * @see [[ConnectionParams]]
  *
@@ -60,16 +59,18 @@ export declare class VaultDiscovery implements IDiscovery, IReconfigurable, IRef
      */
     protected _logger: CompositeLogger;
     /**
-     * Creates a new instance of discovery service.
-     *
-     */
-    constructor();
-    /**
     * Configures component by passing configuration parameters.
     *
     * @param config    configuration parameters to be set.
     */
     configure(config: ConfigParams): void;
+    /**
+    * Reads connections from configuration parameters.
+    * And save it to Vault.
+    *
+    * @param config   configuration parameters to be read
+    */
+    loadVaultCredentials(config: ConfigParams): Promise<void>;
     /**
     * Sets references to dependent components.
     *
