@@ -310,11 +310,13 @@ class VaultCredentialStore {
                     try {
                         let res = yield this._client.readKVSecret(this._token, key);
                         version = res.metadata.version;
-                        // Check if connection already exists
-                        for (let conn of res.data.credentials) {
-                            if (credential.getUsername() == ((_a = conn.username) !== null && _a !== void 0 ? _a : conn.user) && credential.getPassword() == ((_b = conn.password) !== null && _b !== void 0 ? _b : conn.pass)) {
-                                this._logger.info(correlationId, 'Credential already exists via key ' + key + ': ' + credential);
-                                return;
+                        if (res.data.credentials) {
+                            // Check if connection already exists
+                            for (let conn of res.data.credentials) {
+                                if (credential.getUsername() == ((_a = conn.username) !== null && _a !== void 0 ? _a : conn.user) && credential.getPassword() == ((_b = conn.password) !== null && _b !== void 0 ? _b : conn.pass)) {
+                                    this._logger.info(correlationId, 'Credential already exists via key ' + key + ': ' + credential);
+                                    return;
+                                }
                             }
                         }
                     }

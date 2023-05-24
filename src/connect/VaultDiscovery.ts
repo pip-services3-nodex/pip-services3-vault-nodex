@@ -357,14 +357,14 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
                     let res = await this._client.readKVSecret(this._token, key);
                     version = res.metadata.version;
                     // Check if connection already exists
-                    for (let conn of res.data.connections) {
-                        if (connection.getHost() == conn.host && connection.getPort() == (conn.port ?? 0)) {
-                            this._logger.info(correlationId, 'Connection already exists via key ' + key + ': ' + connection);
-                            return connection;
-                        }
-                    }
-
                     if (res.data && res.data.connections) {
+                        for (let conn of res.data.connections) {
+                            if (connection.getHost() == conn.host && connection.getPort() == (conn.port ?? 0)) {
+                                this._logger.info(correlationId, 'Connection already exists via key ' + key + ': ' + connection);
+                                return connection;
+                            }
+                        }
+                    
                         for (let conn of res.data.connections)
                             connections.push(new ConnectionParams(conn).getAsObject());
                     }
@@ -378,7 +378,7 @@ export class VaultDiscovery implements IDiscovery, IReconfigurable, IReferenceab
 
                 connections.push(connection.getAsObject());
                 
-                if (connections.length > 1 && version > 0) {
+                if (version > 0) {
                     await this._client.updateKVSecret(this._token, key, { connections: connections }, version);
                 } else {
                     await this._client.createKVSecret(this._token, key, { connections: connections });

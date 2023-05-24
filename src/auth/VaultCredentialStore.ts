@@ -355,11 +355,13 @@ export class VaultCredentialStore implements ICredentialStore, IReconfigurable, 
                 try {
                     let res = await this._client.readKVSecret(this._token, key);
                     version = res.metadata.version;
-                    // Check if connection already exists
-                    for (let conn of res.data.credentials) {
-                        if (credential.getUsername() == (conn.username ?? conn.user) && credential.getPassword() == (conn.password ?? conn.pass)) {
-                            this._logger.info(correlationId, 'Credential already exists via key ' + key + ': ' + credential);
-                            return;
+                    if (res.data.credentials) {
+                        // Check if connection already exists
+                        for (let conn of res.data.credentials) {
+                            if (credential.getUsername() == (conn.username ?? conn.user) && credential.getPassword() == (conn.password ?? conn.pass)) {
+                                this._logger.info(correlationId, 'Credential already exists via key ' + key + ': ' + credential);
+                                return;
+                            }
                         }
                     }
                 } catch (ex) {

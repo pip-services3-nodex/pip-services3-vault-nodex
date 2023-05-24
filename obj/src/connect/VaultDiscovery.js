@@ -314,13 +314,13 @@ class VaultDiscovery {
                         let res = yield this._client.readKVSecret(this._token, key);
                         version = res.metadata.version;
                         // Check if connection already exists
-                        for (let conn of res.data.connections) {
-                            if (connection.getHost() == conn.host && connection.getPort() == ((_a = conn.port) !== null && _a !== void 0 ? _a : 0)) {
-                                this._logger.info(correlationId, 'Connection already exists via key ' + key + ': ' + connection);
-                                return connection;
-                            }
-                        }
                         if (res.data && res.data.connections) {
+                            for (let conn of res.data.connections) {
+                                if (connection.getHost() == conn.host && connection.getPort() == ((_a = conn.port) !== null && _a !== void 0 ? _a : 0)) {
+                                    this._logger.info(correlationId, 'Connection already exists via key ' + key + ': ' + connection);
+                                    return connection;
+                                }
+                            }
                             for (let conn of res.data.connections)
                                 connections.push(new pip_services3_components_nodex_1.ConnectionParams(conn).getAsObject());
                         }
@@ -334,7 +334,7 @@ class VaultDiscovery {
                         }
                     }
                     connections.push(connection.getAsObject());
-                    if (connections.length > 1 && version > 0) {
+                    if (version > 0) {
                         yield this._client.updateKVSecret(this._token, key, { connections: connections }, version);
                     }
                     else {
